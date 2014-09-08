@@ -1,0 +1,137 @@
+global start
+global time_io      /*, time_io_p*/
+global num
+global last_scall_time
+global first_call=1
+global wr_offset            /*record params of laseek()*/
+global wr_whence
+
+function timestamp:long() { return gettimeofday_us() - start }
+
+function proc:string() { return sprintf("%d (%s)", pid(), execname()) }
+
+probe begin {
+    start = gettimeofday_us() 
+    last_scall_time=start
+    }
+
+global filehandles, fileread, filewrite
+
+global stat_list_read, stat_list_write
+global time_io_d
+
+probe syscall.open.return {
+    if(execname()=="ior"){
+        try{
+            filename = user_string($filename)
+            if ($return != -1) {
+                filehandles[pid(), $return] = filename
+            } else {
+                printf("%d %s access %s fail\n", timestamp(), proc(), filename)
+            }
+        }
+        catch(msg){
+            printf("caught error %s \n",msg)
+        }
+    }
+}
+
+probe syscall.read {
+    if(execname()=="ior"){
+        try{
+            p = pid()
+            bytes = ulong_arg(3)
+            dtime = gettimeofday_us()-last_scall_time//gettimeofday_us() - start//@entry(gettimeofday_us())
+            if(first_call==1){
+                first_call=0
+                dtime=0
+            }
+            last_scall_time=gettimeofday_us()
+            if (bytes > 0)
+                fileread[p, $fd] += bytes
+            time_io[p, $fd] <<< dtime
+        }
+        catch(msg){
+            printf("caught error %s \n",msg)
+        }
+        if ([pid(), $fd] in filehandles){
+            if(fileread[pid(),$fd]>0)
+                stat_list_read[execname()] <<< fileread[pid(),$fd]
+            if (@count(time_io[pid(), $fd])){
+                time_io_d[execname()] <<< dtime
+            }
+            num++
+            handler=filehandles[pid(), $fd]
+            read=fileread[pid(), $fd]
+            printf("CMD:%s PID:%d FD:%d FILE:%.15s R: 0x%x ",execname(),pid(),$fd,handler,read)//
+            printf("delta_scall_time %dus ",dtime)
+            printf("time=%dus ",timestamp())
+            printf("\n")
+        }
+    }
+  }
+
+probe syscall.write {
+    if(execname()=="ior"){
+        try{
+            p = pid()
+            bytes = ulong_arg(3)//bytes = $return
+            dtime = gettimeofday_us()-last_scall_time//gettimeofday_us() - start//@entry(gettimeofday_us())
+            if(first_call==1){
+                first_call=0
+                dtime=0
+            }
+            last_scall_time=gettimeofday_us()
+            if (bytes > 0)
+                filewrite[p, $fd] += bytes
+            time_io[p, $fd] <<< dtime
+        }
+        catch(msg){
+            printf("caught error %s \n",msg)
+        }
+        if ([pid(), $fd] in filehandles){
+            if(filewrite[pid(),$fd]>0)
+            stat_list_write[execname()] <<< filewrite[pid(),$fd]
+            if (@count(time_io[pid(), $fd])){
+                time_io_d[execname()] <<< dtime
+            }
+            num++
+            handler=filehandles[pid(), $fd]
+            write=filewrite[pid(), $fd]
+            printf("CMD:%s PID:%d FD:%d FILE:%.15s W: 0x%x ",execname(),pid(),$fd,handler,write)
+            printf("delta_scall_time %dus ",dtime)
+            printf("time=%dus ",timestamp())
+            printf("\n")
+        }
+    }
+}
+
+probe syscall.close {
+  delete fileread[pid(), $fd]
+  delete filewrite[pid(), $fd]
+  delete filehandles[pid(), $fd]
+  delete time_io[pid(),$fd]
+}
+
+probe timer.ms(5000) {
+    
+    if (num>0){
+        printf("stat of last five second:\n")
+        printf("num of read: %d, num of write: %d, ",@count(stat_list_read["ior"]),@count(stat_list_write["ior"]))
+        printf("total read: 0x%x, total write: 0x%x\n",@sum(stat_list_read["ior"]),@sum(stat_list_write["ior"]))
+        printf("mean read bytes: 0x%x, mean write bytes: 0x%x, mean reqndelta: %d\n",@avg(stat_list_read["ior"]),@avg(stat_list_write["ior"]),@avg(time_io_d["ior"]))
+        printf("max read bytes: 0x%x, max write bytes: 0x%x, max req delta: %d\n",@max(stat_list_read["ior"]),@max(stat_list_write["ior"]),@max(time_io_d["ior"]))
+        printf("min read bytes: 0x%x, min write bytes: 0x%x, min req delta: %d\n",@min(stat_list_read["ior"]),@min(stat_list_write["ior"]),@min(time_io_d["ior"]))
+
+        delete stat_list_read
+        delete stat_list_write
+        delete time_io_d
+        num=0
+  }
+  printf("#################################set start time to zero#################################\n")
+  start = gettimeofday_us()
+  //printf("start_time=%d\n",start)
+  //printf("start_time=%d\n",gettimeofday_us())
+
+}
+

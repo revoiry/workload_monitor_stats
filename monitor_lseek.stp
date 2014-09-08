@@ -1,0 +1,64 @@
+global wr_offset
+global wr_whence
+global filehandles,fileread
+
+function timestamp:long() { return gettimeofday_us() }
+function proc:string() { return sprintf("%d (%s)", pid(), execname()) }
+
+
+
+probe syscall.open.return {
+    if(execname()=="ior"){
+        try{
+            filename = user_string($filename)
+            if ($return != -1) {
+                filehandles[pid(), $return] = filename
+            } else {
+                printf("%d %s access %s fail\n", timestamp(), proc(), filename)
+            }
+        }
+        catch(msg){
+            printf("caught error %s \n",msg)
+        }
+    }
+}
+
+probe syscall.lseek{
+    if(execname()=="ior"){
+        p = pid()
+        printf("fd: %d, offset: 0x%x, origion:0x%x\n", uint_arg(1), ulong_arg(2),uint_arg(3))
+        printf("parms %s\n",$$parms)
+        wr_offset[p,uint_arg(1)]= ulong_arg(2)
+        wr_whence[p,uint_arg(1)]= ulong_arg(3)
+    }
+}
+
+probe syscall.read {
+    if(execname()=="ior"){
+        try{
+            p = pid()
+            bytes = ulong_arg(3)
+            if (bytes > 0)
+                fileread[p, $fd] += bytes
+        }
+        catch(msg){
+            printf("caught error %s \n",msg)
+        }
+        if ([pid(), $fd] in filehandles){
+            //if(fileread[pid(),$fd]>0)
+            handler=filehandles[pid(), $fd]
+            read=fileread[pid(), $fd]
+            printf("CMD:%s PID:%d FD:%d FILE:%.15s R: 0x%x ",execname(),pid(),$fd,handler,read)//
+            printf("\n")
+        }
+        if([pid(), $fd]in wr_offset)
+            printf("offset: 0x%x\n",wr_offset[pid(), $fd])
+    }
+}
+
+
+
+probe syscall.read.return{
+    delete wr_offset[pid(),$fd]
+}
+
