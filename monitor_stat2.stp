@@ -5,10 +5,28 @@ global last_scall_time
 global first_call=1
 global wr_offset            /*record params of laseek()*/
 global wr_whence
+global offset_tr            /*trace read offset*/
+//global offset_tr_write            /*trace read offset*/
 
 function timestamp:long() { return gettimeofday_us() - start }
 
 function proc:string() { return sprintf("%d (%s)", pid(), execname()) }
+
+/*compute variance for offset_tr_write and offset_tr_read*/
+function variance() {
+    i=0
+    sum=0
+    sum_sq=0
+    foreach(param in  offset_tr){
+        sum=sum+param
+        i++
+    }
+    avg=sum/i
+    foreach(param in  offset_tr){
+        sum_sq=sum_sq+(param-avg)*(param-avg)
+    }
+    return sum_sq/i
+}
 
 probe begin {
     start = gettimeofday_us() 
@@ -77,8 +95,10 @@ probe syscall.read {
             printf("delta_scall_time %dus ",dtime)
             printf("time=%dus \n",timestamp())
         }
-        if([pid(), $fd]in wr_offset)
+        if([pid(), $fd]in wr_offset){
             printf("offset: 0x%x",wr_offset[pid(), $fd])
+        offset_tr[wr_offset[pid(), $fd]]= $fd
+        }
         if([pid(), $fd]in wr_offset)
             printf(" origion: 0x%x\n",wr_whence[pid(), $fd])
     }
@@ -117,6 +137,7 @@ probe syscall.write {
         }
         if([pid(), $fd]in wr_offset)
             printf("offset: 0x%x",wr_offset[pid(), $fd])
+        offset_tr[wr_offset[pid(), $fd]] = $fd
         if([pid(), $fd]in wr_offset)
             printf(" origion: 0x%x\n",wr_whence[pid(), $fd])
 
@@ -149,10 +170,11 @@ probe timer.ms(5000) {
         printf("mean read bytes: 0x%x, mean write bytes: 0x%x, mean reqndelta: %d\n",@avg(stat_list_read["ior"]),@avg(stat_list_write["ior"]),@avg(time_io_d["ior"]))
         printf("max read bytes: 0x%x, max write bytes: 0x%x, max req delta: %d\n",@max(stat_list_read["ior"]),@max(stat_list_write["ior"]),@max(time_io_d["ior"]))
         printf("min read bytes: 0x%x, min write bytes: 0x%x, min req delta: %d\n",@min(stat_list_read["ior"]),@min(stat_list_write["ior"]),@min(time_io_d["ior"]))
-
+        printf("var of offset: 0x%x\n",variance())
         delete stat_list_read
         delete stat_list_write
         delete time_io_d
+        delete offset_tr
         num=0
   }
   printf("#################################set start time to zero#################################\n")
