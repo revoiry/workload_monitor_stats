@@ -1,7 +1,7 @@
 class Stat_outfile():
 
     def read_from_file(self,outfile,testfile):
-        train_data=[]
+        train_data={}
         file = open(outfile)
         file_read = {}
         file_write = {}
@@ -13,39 +13,64 @@ class Stat_outfile():
             data = line.split()
             if len(data)<1:
                 if(len(file_read)+len(file_write)>0):
-                    dataset=[]
+                    dataset={}
                     print 'in last two seconds:'
                     if(file_read!={}):
                         res=self.compute_stat(file_read)
                         print 'read,avg,var      ',res
                         for k in res:
-                            dataset.extend(res[k])
+                            if k in dataset:
+                                dataset[k].extend(res[k])
+                            else:
+                                dataset[k]=res[k]
+                        #print dataset
                     if(file_write!={}):
                         res=self.compute_stat(file_write)
                         print 'write,avg,var     ',res
-                        for k in file_write:
-                            dataset.extend(res[k])
+                        for k in res:
+                            if k in dataset:
+                                dataset[k].extend(res[k])
+                            else:
+                                dataset[k]=res[k]
+                        #print dataset
                     if(file_dtime!={}):
                         res=self.compute_stat(file_dtime)
                         print 'dtime,avg,var     ',res
                         for k in res:
-                            dataset.extend(res[k])
+                            if k in dataset:
+                                dataset[k].extend(res[k][1:])
+                            else:
+                                dataset[k]=res[k]
+                        #print dataset
                     if(file_offset!={}):
                         res=self.compute_stat(file_offset)
                         print 'offset,avg,var    ',res
-                        for k in file_offset:
-                            dataset.extend(res[k])
+                        for k in res:
+                            if k in dataset:
+                                dataset[k].extend(res[k][1:])
+                            else:
+                                dataset[k]=testFile.res[k]
+                        #print dataset
                     if(del_offset!={}):
                         res=self.compute_stat(del_offset)
                         print 'del_offset,avg,var',res
                         for k in res:
-                            dataset.extend(res[k])
+                            if k in dataset:
+                                dataset[k].extend(res[k][1:])
+                            else:
+                                dataset[k]=res[k]
+                        #print dataset
+                    for k in dataset:
+                        if k in train_data:
+                            train_data[k].append(dataset[k])
+                        else:
+                            train_data[k]=[]
+                            train_data[k].append(dataset[k])
                     file_read = {}
                     file_write = {}
                     file_dtime = {}
                     file_offset = {}
                     del_offset = {}
-                    train_data.append(dataset)
             else:
                 # print data[0]
                 #print data[7]
@@ -104,6 +129,6 @@ class Stat_outfile():
         return res_dic
 
 
-print Stat_outfile().read_from_file("outfile_null","testFile.")
+print Stat_outfile().read_from_file("outfile2","/lustre1/ior-test-file.")
 
 
