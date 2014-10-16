@@ -5,6 +5,9 @@ global last_scall_time
 global first_call=1
 global wr_offset            /*record params of laseek()*/
 global wr_whence
+global last_wr_offset       /*to compute relative w_r offset*/
+global last_wr_size         /*to compute relative w_r offset*/
+
 
 function timestamp:long() { return gettimeofday_us() - start }
 
@@ -41,8 +44,18 @@ probe syscall.lseek{
         p = pid()
         //printf("fd: %d, offset: 0x%x, origion:0x%x\n", uint_arg(1), ulong_arg(2),uint_arg(3))
         //printf("parms %s\n",$$parms)
-        wr_offset[p,uint_arg(1)]= ulong_arg(2)
         wr_whence[p,uint_arg(1)]= ulong_arg(3)
+        if(ulong_arg(3)==0){
+             wr_offset[p,uint_arg(1)]=ulong_arg(2)-last_wr_offset[p,uint_arg(1)]-last_wr_size[p,uint_arg(1)]
+             if(wr_offset[p,uint_arg(1)]<0)
+                wr_offset[p,uint_arg(1)]=-wr_offset[p,uint_arg(1)]
+             last_wr_offset[p,uint_arg(1)]=ulong_arg(2)
+             //printf("%d\n",last_wr_offset[p,uint_arg(1)])
+        }
+        else if(ulong_arg(3)==1){
+            wr_offset[p,uint_arg(1)]=ulong_arg(2)
+            last_wr_offset[p,uint_arg(1)]=ulong_arg(2)/*+last_wr_offset[p,uint_arg(1)]*/
+        }
     }
 }
 
@@ -58,8 +71,9 @@ probe syscall.read {
             }
             last_scall_time=gettimeofday_us()
             if (bytes > 0)
-                fileread[p, $fd] += bytes
+                fileread[p, $fd]= bytes
             time_io[p, $fd] <<< dtime
+            last_wr_size[p,$fd]=bytes
         }
         catch(msg){
             printf("caught error %s \n",msg)
@@ -77,13 +91,13 @@ probe syscall.read {
             printf(" %d ",dtime)
             printf("%d ",timestamp())
             if([pid(), $fd]in wr_offset)
-            printf("%d ",wr_offset[pid(), $fd])
-        else 
-            printf("0 ");
-        if([pid(), $fd]in wr_offset)
-            printf("%d\n",wr_whence[pid(), $fd])
-        else
-            printf("0\n");
+                printf("%d ",wr_offset[pid(), $fd])
+            else 
+                printf("0 ");
+            if([pid(), $fd]in wr_offset)
+                printf("%d\n",wr_whence[pid(), $fd])
+            else
+                printf("0\n");
         }
     }
   }
@@ -100,8 +114,9 @@ probe syscall.write {
             }
             last_scall_time=gettimeofday_us()
             if (bytes > 0)
-                filewrite[p, $fd] += bytes
+                filewrite[p, $fd] = bytes
             time_io[p, $fd] <<< dtime
+            last_wr_size[p,$fd]=bytes
         }
         catch(msg){
             printf("caught error %s \n",msg)

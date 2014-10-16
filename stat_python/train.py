@@ -1,9 +1,12 @@
-from stat import Stat_outfile
+from stat_output import Stat_outfile
+from sklearn import svm
 
 class Trainning():
     def get_data(self):
-        st= Stat_outfile()
-        print st.read_from_file("outfile","/lustre1/ior-test-file.")
+        st = Stat_outfile()
+        train_dict=st.read_from_file("outfile","/lustre1/ior-test-file.")
+        #print train_dict
 
-Tr=Trainning()
-Tr.get_data()
+
+t=Trainning()
+t.get_data()

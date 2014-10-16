@@ -129,6 +129,6 @@ class Stat_outfile():
         return res_dic
 
 
-print Stat_outfile().read_from_file("outfile2","/lustre1/ior-test-file.")
+#print Stat_outfile().read_from_file("outfile2","/lustre1/ior-test-file.")
 
 
